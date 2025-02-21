@@ -2,7 +2,7 @@
 // Must use \r\n for any new line - \r is carriage return
 
 
-/*** includes  ***/     // Up to date as of step 97
+/*** includes  ***/
 #define _DEFAULT_SOURCE
 #define _BSD_SOURCE
 #define _GNU_SOURCE
@@ -45,7 +45,7 @@ enum editorKey {
 
 
 
-/*** data  ***/             //Up to date as of Step 111
+/*** data  ***/             
 // erow = "editor row"
 typedef struct erow {
     int size;
@@ -206,7 +206,7 @@ int getWindowSize (int *rows, int *cols) {
 
 
 
-/*** row operations ***/    // Up to date as of Step 113
+/*** row operations ***/    
 int editorRowCxToRx (erow *row, int cx) {
     int rx = 0;
     int j;
@@ -364,7 +364,7 @@ void editorDelChar() {
 
 
 
-/*** file i/o ***/      // Up to date as of step 123
+/*** file i/o ***/     
 char *editorRowsToString(int *buflen) {
     int totlen = 0;
     int j;
@@ -445,16 +445,37 @@ void editorSave() {
 
 /*** find ***/
 void editorFindCallback(char *query, int key) {
+    // Stores index of the row with the last match or -1 if NA
+    static int last_match = -1;
+    // Stores direction of the search 1-forward -1-backward
+    static int direction = 1;
+    
     if (key == '\r' || key == '\x1b') {
-        return
+        last_match = -1;
+        direction = 1;
+        return;
+    }   else if (key == ARROW_RIGHT || key == ARROW_DOWN) {
+        direction = 1;
+    }   else if (key == ARROW_LEFT || key == ARROW_UP) {
+        direction = -1;
+    }   else {
+        last_match = -1;
+        direction = 1;
     }
     
+    if (last_match == -1) direction = 1;
+    int current = last_match;
     int i;
     for (i=0; i < E.numrows; i++) {
-        erow *row = &E.row[i];
+        current += direction;
+        if (current == -1) current = E.numrows - 1;
+        else if (current == E.numrows) current = 0;
+       
+        erow *row = &E.row[current];
         char *match = strstr(row->render, query);
         if (match) {
-            E.cy = i;
+            last_match = current;
+            E.cy = current;
             E.cx = editorRowRxtoCx(row, match - row->render);
             E.rowoff = E.numrows;
             break;
@@ -468,7 +489,7 @@ void editorFind() {
     int saved_coloff = E.coloff;
     int saved_rowoff = E.rowoff;
     
-    char *query = editorPrompt("Search: %s (ESC to cancel)", editorFindCallback);
+    char *query = editorPrompt("Search: %s (Use ESC/Arrows/Enter)", editorFindCallback);
     if (query) {
         free(query);
     }   else {
@@ -509,7 +530,7 @@ void abFree(struct abuf *ab) {
 
 
 
-/*** output ***/        // Up to date Step 100
+/*** output ***/        
 void editorScroll() {
     E.rx = 0;
     if (E.cy < E.numrows) {
@@ -632,7 +653,7 @@ void editorSetStatusMessage(const char *fmt, ...) {
 
 
 
-/*** input ***/         // Up to date Step 115
+/*** input ***/        
 char *editorPrompt(char *prompt, void (*callback)(char *, int)) {
     size_t bufsize = 128;
     char *buf = malloc(bufsize);
@@ -796,7 +817,7 @@ void editorProcessKeypress() {
 
 
 
-/*** init  ***/         //Up to date as of Step 109
+/*** init  ***/         
 // Initializes all the fields in the E struct
 void initEditor() {
     E.cx = 0;
