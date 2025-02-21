@@ -463,8 +463,7 @@ void editorFindCallback(char *query, int key) {
 }
 
 void editorFind() {
-    char *query = editorPrompt("Search: %s (ESC to cancel)", NULL);
-    // If esc is pressed, returns right away
+    char *query = editorPrompt("Search: %s (ESC to cancel)", editorFindCallback);
     if (query) {
         free(query);
     }
