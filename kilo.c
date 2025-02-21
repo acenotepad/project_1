@@ -2,8 +2,7 @@
 // Must use \r\n for any new line - \r is carriage return
 
 
-
-/*** includes  ***/     // Up to date as of step 59
+/*** includes  ***/     // Up to date as of step 97
 #define _DEFAULT_SOURCE
 #define _BSD_SOURCE
 #define _GNU_SOURCE
@@ -11,11 +10,13 @@
 #include <ctype.h>
 #include <errno.h>
 #include <stdio.h>
+#include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/ioctl.h>
 #include <sys/types.h>
 #include <termios.h>
+#include <time.h>
 #include <unistd.h>
 
 
@@ -41,7 +42,7 @@ enum editorKey {
 
 
 
-/*** data  ***/             //Up to date as of Step 80
+/*** data  ***/             //Up to date as of Step 97
 // erow = "editor row"
 typedef struct erow {
     int size;
@@ -60,6 +61,9 @@ struct editorConfig {
     int screencols;
     int numrows;
     erow *row;
+    char *filename;
+    char statusmsg[80];
+    time_t statusmsg_time;
     struct termios orig_termios;
 };
 
@@ -244,8 +248,13 @@ void editorAppendRow(char *s, size_t len) {
 
 
 
-/*** file i/o ***/      // Up to date as of step 65c
+/*** file i/o ***/      // Up to date as of step 94
 void editorOpen(char *filename) {
+    // free the memory so strdup can work
+    free(E.filename);
+    // strdup copies the given string and allocates the required memory
+    E.filename = strdup(filename);
+    
     FILE *fp = fopen(filename, "r");
     if (!fp) die("fopen");
 
@@ -293,7 +302,7 @@ void abFree(struct abuf *ab) {
 
 
 
-/*** output ***/        // Up to date Step 89
+/*** output ***/        // Up to date Step 100
 void editorScroll() {
     E.rx = 0;
     if (E.cy < E.numrows) {
@@ -346,10 +355,36 @@ void editorDrawRows(struct abuf *ab){
 
         // The 'K' command is the Erase In Line command
         abAppend(ab, "\x1b[K", 3);
-        if (y < E.screenrows - 1) {
-            abAppend(ab, "\r\n", 2);
+        abAppend(ab, "\r\n", 2);
+    }
+}
+
+void editorDrawStatusBar(struct abuf *ab) {
+    abAppend(ab, "\x1b[7m", 4);
+    char status[80], rstatus[80];
+    int len = snprintf(status, sizeof(status), "%.20s - %d lines", E.filename ? E.filename : "[No Name]", E.numrows);
+    int rlen = snprintf(rstatus, sizeof(rstatus), "%d/%d", E.cy + 1, E.numrows);
+    if (len > E.screencols) len = E.screencols;
+    abAppend(ab, status, len);
+    while (len < E.screencols) {
+        if (E.screencols - len == rlen) {
+            abAppend(ab, rstatus, rlen);
+            break;
+        }   else {
+            abAppend(ab, " ", 1);
+            len++;
         }
     }
+    abAppend(ab, "\x1b[m", 3);
+    abAppend(ab, "\r\n", 2);
+}
+
+void editorDrawMessageBar(struct abuf *ab) {
+    abAppend(ab, "\x1b[K", 3);
+    int msglen = strlen(E.statusmsg);
+    if (msglen > E.screencols) msglen = E.screencols;
+    if (msglen && time(NULL) - E.statusmsg_time < 5)
+        abAppend(ab, E.statusmsg, msglen);
 }
 
 // Renders the editor's user interface to the screen after each keypress
@@ -363,6 +398,8 @@ void editorRefreshScreen() {
     abAppend(&ab, "\x1b[H", 3);
 
     editorDrawRows(&ab);
+    editorDrawStatusBar(&ab);
+    editorDrawMessageBar(&ab);
 
     char buf[32];
     // Make sure to add the +1 so it lines up with the 1-indexed terminal values
@@ -375,6 +412,14 @@ void editorRefreshScreen() {
     write(STDOUT_FILENO, ab.b, ab.len);
     // Frees the memory
     abFree(&ab);
+}
+
+void editorSetStatusMessage(const char *fmt, ...) {
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(E.statusmsg, sizeof(E.statusmsg), fmt, ap);
+    va_end(ap);
+    E.statusmsg_time = time(NULL);
 }
 
 
@@ -467,7 +512,7 @@ void editorProcessKeypress() {
 
 
 
-/*** init  ***/         //Up to date as of Step 71
+/*** init  ***/         //Up to date as of Step 97
 // Initializes all the fields in the E struct
 void initEditor() {
     E.cx = 0;
@@ -480,8 +525,13 @@ void initEditor() {
     E.coloff = 0;
     E.numrows = 0;
     E.row = NULL;
+    E.filename = NULL;
+    E.statusmsg[0] = '\0';
+    E.statusmsg_time = 0;
     
     if (getWindowSize(&E.screenrows, &E.screencols) == -1) die("getWindowSize");
+    // Prints a blank line after the first status bar
+    E.screenrows -= 2;
 }
 
 int main(int argc, char *argv[]) {
@@ -490,6 +540,9 @@ int main(int argc, char *argv[]) {
     if (argc >= 2) {    
         editorOpen(argv[1]);
     }
+
+    // Set with the help message with the key beindings the text editor uses (Ctrl-q)
+    editorSetStatusMessage("HELP: Ctrl-Q = quit");
 
     // While the program hasn't timed out, it reads in characters.
     while (1) {
