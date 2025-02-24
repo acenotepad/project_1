@@ -1,5 +1,5 @@
 /*** Programmer Notes ***/
-// Must use \r\n for any new line - \r is carriage return
+/* Must use \r\n for any new line - \r is carriage return */
 
 
 /*** includes  ***/
@@ -46,12 +46,13 @@ enum editorKey {
 
 
 /*** data  ***/             
-// erow = "editor row"
+/* erow = "editor row" */
 typedef struct erow {
     int size;
     int rsize;
     char *chars;
     char *render;
+    unsigned char *hl;
 }   erow;
 
 struct editorConfig {
@@ -98,7 +99,7 @@ void disableRawMode() {
 }
 
 void enableRawMode() {
-    if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &E.orig_termios) == -1) die("tcsetattr");    
+    if (tcgetattr(STDIN_FILENO, &E.orig_termios) == -1) die("tcgetattr");    
     // atexit is called automatically when the program exits; this ensures raw mode is disabled no matter how the program exits
     atexit(disableRawMode);
 
@@ -108,7 +109,7 @@ void enableRawMode() {
     // Disables all output processing
     raw.c_oflag &= ~(OPOST);
     raw.c_cflag |= (CS8);
-    // Echo lets the user see what they're typing in the terminal; this command turns it off
+    /* Echo lets the user see what they're typing in the terminal; this command turns it off */
     // ICANON turns off canonical mode (this reads line by line - we want byte by byte); this command turns it off
     // ISIG turns off SIGINT and SIGTSTP (ctl-c and ctl-z)
     raw.c_lflag &= ~(ECHO | ICANON | IEXTEN | ISIG);
@@ -266,6 +267,7 @@ void editorInsertRow(int at, char *s, size_t len) {
     
     E.row[at].rsize = 0;
     E.row[at].render = NULL;
+    E.row[at].hl = NULL;
     editorUpdateRow(&E.row[at]);
     
     E.numrows++;
@@ -275,6 +277,7 @@ void editorInsertRow(int at, char *s, size_t len) {
 void editorFreeRow(erow *row) {
     free(row->render);
     free(row->chars);
+    free(row->hl);
 }
 
 void editorDelRow(int at) {
@@ -578,7 +581,17 @@ void editorDrawRows(struct abuf *ab){
             int len = E.row[filerow].rsize - E.coloff;
             if (len < 0) len = 0;
             if (len > E.screencols) len = E.screencols;
-            abAppend(ab, &E.row[filerow].render[E.coloff], len);
+            char *c = &E.row[filerow].render[E.coloff];
+            int j;
+            for (j=0; j < len; j++) {
+                if (isdigit(c[j])) {
+                    abAppend(ab, "\x1b[31m", 5);
+                    abAppend(ab, &c[j], 1);
+                    abAppend(ab, "\x1b[39m", 5);
+                }   else {
+                    abAppend(ab, &c[j], 1);
+                }
+            }
         }
 
         // The 'K' command is the Erase In Line command
