@@ -954,10 +954,6 @@ void editorProcessKeypress() {
 
 
 
-
-
-
-
 /*** init  ***/         
 // Initializes all the fields in the E struct
 void initEditor() {
