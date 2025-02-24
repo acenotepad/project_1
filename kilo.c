@@ -42,6 +42,11 @@ enum editorKey {
     PAGE_DOWN
 };
 
+enum editorHighlight {
+    HL_NORMAL = 0,
+    HL_NUMBER,
+    HL_MATCH
+};
 
 
 
@@ -207,6 +212,30 @@ int getWindowSize (int *rows, int *cols) {
 
 
 
+/*** syntax highlighting ***/
+void editorUpdateSyntax(erow *row) {
+    row->hl = realloc(row->hl, row->rsize);
+    memset(row->hl, HL_NORMAL, row->rsize);
+
+    int i;
+    for (i = 0; i < row->rsize; i++) {
+        if (isdigit(row->render[i])) {
+            row->hl[i] = HL_NUMBER;
+        }
+    }
+}
+
+int editorSyntaxToColor(int hl) {
+    switch (hl) {
+        case HL_NUMBER: return 31;
+        case HL_MATCH: return 34;
+        default: return 37;
+    }
+}
+
+
+
+
 /*** row operations ***/    
 int editorRowCxToRx (erow *row, int cx) {
     int rx = 0;
@@ -248,10 +277,11 @@ void editorUpdateRow(erow *row) {
         }   else {
             row->render[idx++] = row->chars[j];
         }
-
     }
     row->render[idx] = '\0';
     row->rsize = idx;
+
+    editorUpdateSyntax(row);
 }
 
 void editorInsertRow(int at, char *s, size_t len) {
@@ -481,6 +511,8 @@ void editorFindCallback(char *query, int key) {
             E.cy = current;
             E.cx = editorRowRxtoCx(row, match - row->render);
             E.rowoff = E.numrows;
+
+            memset(&row->hl[match - row->render], HL_MATCH, strlen(query));
             break;
         }
     }
@@ -582,16 +614,27 @@ void editorDrawRows(struct abuf *ab){
             if (len < 0) len = 0;
             if (len > E.screencols) len = E.screencols;
             char *c = &E.row[filerow].render[E.coloff];
+            unsigned char *hl = &E.row[filerow].hl[E.coloff];
+            int current_color = -1;
             int j;
             for (j=0; j < len; j++) {
-                if (isdigit(c[j])) {
-                    abAppend(ab, "\x1b[31m", 5);
+                if (hl[j] == HL_NORMAL) {
+                    if (current_color != -1) {
+                        abAppend(ab, "\x1b[39m", 5);
+                    }
                     abAppend(ab, &c[j], 1);
-                    abAppend(ab, "\x1b[39m", 5);
                 }   else {
+                    int color = editorSyntaxToColor(hl[j]);
+                    if (color != current_color) {
+                        current_color = color;
+                        char buf[16];
+                        int clen = snprintf(buf, sizeof(buf), "\x1b[%dm", color);
+                        abAppend(ab, buf, clen);
+                    }
                     abAppend(ab, &c[j], 1);
                 }
             }
+            abAppend(ab, "\x1b[39m", 5);
         }
 
         // The 'K' command is the Erase In Line command
